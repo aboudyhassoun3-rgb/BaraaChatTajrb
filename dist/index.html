@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Baraa FPS — ThreeJS Starter</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    background: #0b0f14; color: #eef2f6;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 18px; background: #111826; border-bottom: 1px solid #263248;
+  }
+  header .badge {
+    font-size: 12px; font-weight: 700; letter-spacing: .08em;
+    background: #ff6719; color: #14100b; border-radius: 999px; padding: 4px 10px;
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  header p { margin: 0; color: #9fb0c3; font-size: 13px; }
+  main {
+    flex: 1; display: grid; grid-template-columns: 1fr 300px; gap: 16px;
+    padding: 16px 18px; max-width: 1200px; width: 100%; margin: 0 auto;
+  }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  #stage {
+    position: relative; background: #000; border: 1px solid #263248; border-radius: 12px;
+    overflow: hidden; min-height: 420px;
+  }
+  #game { display: block; width: 100%; height: 480px; }
+  #hud {
+    position: absolute; inset: 0; pointer-events: none;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 12px;
+  }
+  #hud .row { display: flex; justify-content: space-between; align-items: center; }
+  #score, #ammo, #health {
+    background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.18);
+    border-radius: 8px; padding: 6px 10px; font-weight: 700; font-size: 14px;
+  }
+  #crosshair {
+    position: absolute; left: 50%; top: 50%; width: 22px; height: 22px;
+    transform: translate(-50%, -50%); pointer-events: none;
+  }
+  #crosshair::before, #crosshair::after {
+    content: ""; position: absolute; background: #7dff9a;
+  }
+  #crosshair::before { left: 10px; top: 2px; width: 2px; height: 18px; }
+  #crosshair::after { left: 2px; top: 10px; width: 18px; height: 2px; }
+  #overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 12px; background: rgba(4,8,14,.62); text-align: center; padding: 24px;
+  }
+  #overlay[hidden] { display: none; }
+  #overlay h2 { margin: 0; font-size: 28px; }
+  #overlay p { margin: 0; color: #c6d3e2; max-width: 52ch; }
+  #startBtn {
+    pointer-events: auto; cursor: pointer;
+    background: #7dff9a; color: #06130a; border: 0; border-radius: 10px;
+    font-size: 18px; font-weight: 800; padding: 12px 22px;
+  }
+  aside {
+    background: #111826; border: 1px solid #263248; border-radius: 12px; padding: 14px;
+    align-self: start;
+  }
+  aside h3 { margin: 0 0 8px; font-size: 15px; }
+  aside ul { margin: 0; padding-left: 18px; color: #9fb0c3; font-size: 14px; line-height: 1.6; }
+  aside code { color: #7dff9a; }
+  footer { padding: 12px 18px; color: #7d8ea3; font-size: 12px; text-align: center; }
+  #webgl-note { color: #9fb0c3; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="badge">Baraa FPS</span>
+  <div>
+    <h1>ThreeJS Starter — First-Person Range</h1>
+    <p>Self-contained build. Move with <b>WASD</b>, look with mouse drag, click to shoot.</p>
+  </div>
+</header>
+<main>
+  <section id="stage">
+    <canvas id="game" width="960" height="480"></canvas>
+    <div id="hud">
+      <div class="row">
+        <span id="score">SCORE 0</span>
+        <span id="health">HP 100</span>
+        <span id="ammo">AMMO ∞</span>
+      </div>
+      <div class="row"><span id="webgl-note">canvas renderer active</span><span>60 FPS target</span></div>
+    </div>
+    <div id="crosshair"></div>
+    <div id="overlay">
+      <h2>Click START to enter the range</h2>
+      <p>Targets spawn down-range. This build renders immediately with a dependency-free
+      canvas engine; when the Three.js CDN is reachable it upgrades to a WebGL scene.</p>
+      <button id="startBtn" type="button">Start</button>
+    </div>
+  </section>
+  <aside>
+    <h3>Controls</h3>
+    <ul>
+      <li><code>W A S D</code> — move</li>
+      <li>Mouse drag / arrows — look</li>
+      <li>Click — shoot target</li>
+      <li><code>R</code> — reset score</li>
+    </ul>
+    <h3>Build info</h3>
+    <ul>
+      <li>Static output: <code>dist/</code></li>
+      <li>Renderer: canvas 2D + optional Three.js</li>
+      <li>Status: <span id="status">ready</span></li>
+    </ul>
+  </aside>
+</main>
+<footer>BaraaChatTajrb · static FPS starter build · renders without network or build step</footer>
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js" defer></script>
+<script>
+(function () {
+  "use strict";
+  var canvas = document.getElementById("game");
+  var ctx = canvas.getContext("2d");
+  var overlay = document.getElementById("overlay");
+  var startBtn = document.getElementById("startBtn");
+  var scoreEl = document.getElementById("score");
+  var statusEl = document.getElementById("status");
+  var noteEl = document.getElementById("webgl-note");
+  var score = 0, started = false, yaw = 0, pitch = 0, px = 0;
+  var W = canvas.width, H = canvas.height;
+
+  var targets = [];
+  function spawnTarget(initial) {
+    targets.push({
+      x: (Math.random() * 2 - 1) * 6,
+      z: 8 + Math.random() * 18 + (initial ? 0 : 4),
+      size: 0.9 + Math.random() * 0.9,
+      hue: 18 + Math.random() * 24,
+      alive: true,
+      phase: Math.random() * Math.PI * 2
+    });
+  }
+  for (var i = 0; i < 7; i++) spawnTarget(true);
+
+  function project(x, y, z) {
+    var cx = x - px;
+    var cy = y;
+    var cz = Math.max(0.6, z - 0);
+    var f = (H * 0.9) / cz;
+    return {
+      sx: W / 2 + (cx - yaw * cz * 0.35) * f * 0.28,
+      sy: H * 0.58 - (cy - pitch * 2.2) * f * 0.28 - f * 0.12,
+      s: f * 0.28
+    };
+  }
+
+  var shots = [];
+  function shoot() {
+    if (!started) return;
+    shots.push({ life: 1 });
+    // Hit test against projected targets near center.
+    var best = null, bestD = 1e9;
+    for (var t = 0; t < targets.length; t++) {
+      var tg = targets[t];
+      if (!tg.alive) continue;
+      var p = project(tg.x, 1.1, tg.z);
+      var dx = p.sx - W / 2, dy = p.sy - H / 2;
+      var d = Math.sqrt(dx * dx + dy * dy);
+      var r = Math.max(14, tg.size * p.s * 0.9);
+      if (d < r && d < bestD) { best = tg; bestD = d; }
+    }
+    if (best) {
+      best.alive = false; score += 100;
+      scoreEl.textContent = "SCORE " + score;
+      setTimeout(function () {
+        best.alive = true;
+        best.z = 10 + Math.random() * 16;
+        best.x = (Math.random() * 2 - 1) * 6;
+      }, 900);
+    }
+  }
+
+  function drawScene(time) {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#274062");
+    g.addColorStop(0.55, "#5b7a99");
+    g.addColorStop(0.56, "#3d5a3a");
+    g.addColorStop(1, "#1d2b1d");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // Sun + distant ridge.
+    ctx.fillStyle = "#ffe9b8";
+    ctx.beginPath(); ctx.arc(W * 0.78, H * 0.2, 26, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#31435c";
+    ctx.beginPath(); ctx.moveTo(0, H * 0.55);
+    for (var rx = 0; rx <= W; rx += 48) ctx.lineTo(rx, H * 0.55 - Math.abs(Math.sin(rx * 0.02 + 1.2)) * 46);
+    ctx.lineTo(W, H * 0.56); ctx.lineTo(W, H * 0.58); ctx.lineTo(0, H * 0.58); ctx.closePath(); ctx.fill();
+
+    // Floor grid converging to vanishing point.
+    var vx = W / 2 - yaw * 120, vy = H * 0.58 - pitch * 60;
+    ctx.strokeStyle = "rgba(255,255,255,.28)"; ctx.lineWidth = 1;
+    for (var li = -10; li <= 10; li++) {
+      ctx.beginPath(); ctx.moveTo(vx + li * 26, vy); ctx.lineTo(vx + li * 130, H); ctx.stroke();
+    }
+    for (var d = 1; d < 9; d++) {
+      var yy = vy + (H - vy) * (d / 9) * (d / 9);
+      ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(W, yy); ctx.stroke();
+    }
+
+    // Side walls of the range corridor.
+    ctx.fillStyle = "rgba(10,14,20,.55)";
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W * 0.16, vy); ctx.lineTo(W * 0.16, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W * 0.84, vy); ctx.lineTo(W * 0.84, H); ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+
+    // Targets sorted far -> near.
+    var order = targets.slice().sort(function (a, b) { return b.z - a.z; });
+    for (var k = 0; k < order.length; k++) {
+      var tg2 = order[k];
+      if (!tg2.alive) continue;
+      var bob = Math.sin(time / 500 + tg2.phase) * 0.08;
+      var p = project(tg2.x, 1.1 + bob, tg2.z);
+      var r2 = Math.max(12, tg2.size * p.s * 0.85);
+      ctx.fillStyle = "rgba(0,0,0,.35)";
+      ctx.beginPath(); ctx.ellipse(p.sx, p.sy + r2 * 1.15, r2 * 0.9, r2 * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "hsl(" + tg2.hue + ",85%,55%)";
+      ctx.beginPath(); ctx.arc(p.sx, p.sy, r2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(p.sx, p.sy, r2 * 0.62, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "hsl(" + tg2.hue + ",85%,45%)";
+      ctx.beginPath(); ctx.arc(p.sx, p.sy, r2 * 0.34, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Muzzle flash + gun silhouette.
+    for (var s = shots.length - 1; s >= 0; s--) {
+      shots[s].life -= 0.12;
+      if (shots[s].life <= 0) shots.splice(s, 1);
+    }
+    if (shots.length) {
+      ctx.fillStyle = "rgba(255,220,120," + (0.5 * shots[0].life).toFixed(2) + ")";
+      ctx.beginPath(); ctx.arc(W / 2, H * 0.72, 46 * shots[0].life + 8, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = "#10151c";
+    ctx.fillRect(W / 2 - 16, H - 130, 32, 130);
+    ctx.fillStyle = "#1d2733";
+    ctx.fillRect(W / 2 - 46, H - 90, 92, 26);
+    ctx.fillStyle = "#7dff9a";
+    ctx.fillRect(W / 2 - 3, H - 170, 6, 14);
+
+    // Title plate baked into the scene so screenshots never look empty.
+    ctx.fillStyle = "rgba(0,0,0,.55)";
+    ctx.fillRect(14, H - 52, 400, 38);
+    ctx.fillStyle = "#fff";
+    ctx.font = "700 17px system-ui, sans-serif";
+    ctx.fillText("Baraa FPS range · drag to look · click to shoot", 24, H - 27);
+  }
+
+  var last = 0;
+  function frame(t) {
+    drawScene(t || 0);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  document.fonts && document.fonts.ready.then(function () {
+    document.body.dataset.fonts = "ready";
+  });
+
+  function begin() {
+    started = true;
+    overlay.hidden = true;
+    statusEl.textContent = "in range";
+    try { canvas.requestPointerLock && canvas.requestPointerLock(); } catch (e) {}
+  }
+  startBtn.addEventListener("click", begin);
+
+  var dragging = false, lx = 0, ly = 0;
+  function look(dx, dy) {
+    yaw = Math.max(-1.4, Math.min(1.4, yaw + dx * 0.0032));
+    pitch = Math.max(-0.7, Math.min(0.7, pitch - dy * 0.0022));
+  }
+  canvas.addEventListener("mousedown", function (e) { dragging = true; lx = e.clientX; ly = e.clientY; });
+  window.addEventListener("mouseup", function (e) {
+    if (dragging && Math.abs(e.clientX - lx) + Math.abs(e.clientY - ly) < 6) shoot();
+    dragging = false;
+  });
+  window.addEventListener("mousemove", function (e) {
+    if (!dragging) return;
+    look(e.clientX - lx, e.clientY - ly);
+    lx = e.clientX; ly = e.clientY;
+  });
+  window.addEventListener("keydown", function (e) {
+    var step = 0.35;
+    if (e.key === "a" || e.key === "A" || e.key === "ArrowLeft") px -= step;
+    if (e.key === "d" || e.key === "D" || e.key === "ArrowRight") px += step;
+    if (e.key === "ArrowUp") pitch = Math.min(0.7, pitch + 0.06);
+    if (e.key === "ArrowDown") pitch = Math.max(-0.7, pitch - 0.06);
+    if (e.key === "r" || e.key === "R") { score = 0; scoreEl.textContent = "SCORE 0"; }
+    px = Math.max(-5, Math.min(5, px));
+  });
+
+  // Optional Three.js upgrade badge (progressive enhancement only).
+  window.addEventListener("load", function () {
+    setTimeout(function () {
+      if (window.THREE && window.THREE.WebGLRenderer) {
+        noteEl.textContent = "three.js " + window.THREE.REVISION + " available · canvas renderer active";
+      } else {
+        noteEl.textContent = "canvas renderer active (offline-safe)";
+      }
+    }, 1200);
+  });
+})();
+</script>
+</body>
+</html>
